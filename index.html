@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>代码转换工具</title>
+        <!-- <script src="https://unpkg.com/@babel/parser@latest"></script>
+        <script src="https://unpkg.com/@babel/traverse@latest"></script>
+        <script src="https://unpkg.com/@babel/generator@7.26.9/lib/index.js"></script> -->
+        <!-- <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script> -->
+        <!-- <script src="./parse.js"></script> -->
+        <!-- <script src="https://unpkg.com/@babel/traverse/lib/index.js"></script> -->
+    </head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 800px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            color: #555;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+    <body>
+        <div class="container">
+            <h1>代码转换工具</h1>
+            <div class="section">
+                <h2>1. WXML 转 UniApp Template</h2>
+                <textarea id="wxml-input" placeholder="输入WXML代码..."></textarea>
+                <button id="convertWXMLBtn">转换</button>
+                <textarea id="template-code" placeholder="转换后的UniApp Template代码..." readonly></textarea>
+                <button onclick="copyText('template-code')">复制</button>
+            </div>
+            <div class="section">
+                <h2>2. 微信小程序TS转Vue3 Setup</h2>
+                <textarea id="ts-input" placeholder="输入微信小程序TS代码..."></textarea>
+                <button id="convertTsBtn">转换</button>
+                <textarea id="ts-output" placeholder="转换后的Vue3 Setup代码..." readonly></textarea>
+                <button onclick="copyText('ts-output')">复制</button>
+            </div>
+        </div>
+        <script>
+            window.process = {
+                env: { NODE_ENV: 'development' },
+            };
+        </script>
+        <script>
+            // console.log(parse, 'parse');
+            // const { parse } = Babel;
+            // globalThis.parse = parse;
+            // const traverse = Babel.traverse;
+            // const generate = Babel.generate;
+            // globalThis.traverse = traverse;
+            // globalThis.generate = generate;
+            // function copyText(elementId) {
+            //     const textArea = document.getElementById(elementId);
+            //     textArea.select();
+            //     document.execCommand('copy');
+            // }
+        </script>
+        <script src="./index.js" type="module"></script>
+    </body>
+</html>
