@@ -150,7 +150,7 @@ export function parseWechatData(code: string, store_fields: string[]) {
                                         resolvefunc(propValue, stateProperties, scope, lifecycle)
 
                                     } else if (prop.key.name === 'storeBindings') {
-                                        debugger
+
                                         // 处理 storeBindings
                                         if (prop.value.type === 'ObjectExpression') {
                                             storeBindings = `{${prop.value.properties.map(proper => generate(proper).code).join('\n')}}`
@@ -164,7 +164,7 @@ export function parseWechatData(code: string, store_fields: string[]) {
                                         resolvefunc(propValue, stateProperties, scope, computed)
 
                                     } else if (prop.key.name === 'watch' || prop.key.name === 'observers') {
-                                        debugger
+
                                         // 补充，处理 watch 或 observers
                                         resolvefunc(propValue, stateProperties, scope, watchers)
                                     }
@@ -193,7 +193,7 @@ export function parseWechatData(code: string, store_fields: string[]) {
         transformFunction2(replace_pending_task, stateProperties, scope)
     }
     // 生成 Vue 3 data 代码
-    debugger
+
     const dataDeclarations = stateProperties.filter(data => !data.is_property && !data.is_store)
         .map(data => {
             if (data.type === "ref") {
@@ -206,7 +206,7 @@ export function parseWechatData(code: string, store_fields: string[]) {
         })
         .join("\n");
     const propertiesDeclarations = stateProperties.filter(prop => prop.is_property)
-    debugger
+
     const propertiesDeclarations_str = propertiesDeclarations.length > 0 ? `const props = defineProps({\n  ${propertiesDeclarations
         .map((prop) => {
             if (prop.value) {

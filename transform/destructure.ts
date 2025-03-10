@@ -17,7 +17,7 @@ export function transformDestructureToAssignment(code) {
                 if (!t.isObjectPattern(id) && !t.isArrayPattern(id)) {
                     return;
                 }
-                // debugger
+                // 
                 // 检测 `init` 是否是 `||` 表达式
                 const isLogicalOrExpression = t.isLogicalExpression(init) && init.operator === "||";
 
@@ -137,7 +137,7 @@ export function transformDestructureToAssignment(code) {
             });
         }
     });
-    debugger
+
     const temp = generate(ast).code;
     return temp
 }

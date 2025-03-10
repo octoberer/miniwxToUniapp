@@ -68,7 +68,7 @@ export function convertMobXToPinia(code) {
                     node.expression.callee?.callee?.name === 'action'
             );
             scope = path.scope
-            debugger
+
             // 如果找到 'action' 调用，直接取出其内部的代码
             if (actionCall) {
                 // 'action' 内部的逻辑
@@ -78,7 +78,7 @@ export function convertMobXToPinia(code) {
                 const modifiedBody = replaceStoreAccess(actionFunction.body, storeName, stateProperties);
                 // 将 'action' 包裹的逻辑提取出来
                 // path.node.body.body = innerStatement;
-                debugger
+
                 actions.push({
                     name: path.node.id.name,
                     body: generate(modifiedBody).code,

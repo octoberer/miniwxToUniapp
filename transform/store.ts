@@ -14,19 +14,16 @@ function extractstoreBindingsCode(code: string) {
                 const name = path.parent.callee.name
                 if (name === "Component" || name === "ComponentWithStore" || name === "Page") {
                     path.node.properties.forEach((prop: t.Node) => {
-                        if (prop.type === 'ObjectProperty' || prop.type === 'ObjectMethod') {
-                            if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
-                                if (prop.key.name === 'storeBindings') {
-                                    debugger
-                                    // 处理 storeBindings
-                                    if (prop.value.type === 'ObjectExpression') {
-                                        storeBindings = `{${prop.value.properties.map(proper => generate(proper).code).join('\n')}}`
-                                    }
-                                    else if (prop.value.type === 'ArrayExpression') {
-                                        storeBindings = `[${prop.value.elements.map(node => generate(node).code).join(',\n')}]`
-                                    }
-
+                        if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
+                            if (prop.key.name === 'storeBindings') {
+                                // 处理 storeBindings
+                                if (prop.value.type === 'ObjectExpression') {
+                                    storeBindings = `{${prop.value.properties.map(proper => generate(proper).code).join(',\n')}}`
                                 }
+                                else if (prop.value.type === 'ArrayExpression') {
+                                    storeBindings = `[${prop.value.elements.map(node => generate(node).code).join(',\n')}]`
+                                }
+
                             }
                         }
                     })
@@ -37,10 +34,12 @@ function extractstoreBindingsCode(code: string) {
     return storeBindings
 }
 export function generatePiniaCode(code: string) {
-    debugger
     const storeBindingsCode = extractstoreBindingsCode(code)
+    if (!storeBindingsCode || storeBindingsCode.length == 0) {
+        return { resultCode: '', store_fields: [] }
+    }
     const wrapperCode = `
-    storeBindings:${storeBindingsCode};
+    const storeBindings =${storeBindingsCode};
   `;
     // 解析 storeBindings 的代码
     const ast = parse(wrapperCode, {
@@ -54,41 +53,59 @@ export function generatePiniaCode(code: string) {
 
     // 使用 traverse 遍历 AST
     traverse(ast, {
-        enter(path) {
-            // 检查是否是 storeBindings 的对象或数组
-            if (path.isArrayExpression() || path.isObjectExpression()) {
-                // 如果是数组，处理每个元素
-                if (path.isArrayExpression()) {
-                    path.node.elements.forEach((item) => {
-                        if (item.type === 'ObjectExpression') {
-                            processStoreBinding(item);
-                        }
-                    });
-                }
-                path.skip();
-                // 如果是对象，直接处理该对象
-                if (path.isObjectExpression()) {
-                    processStoreBinding(path.node);
-                }
-            }
+        ObjectExpression(path: any) {
+            // 如果是数组，处理每个元素
+            processStoreBinding(path.node);
+            path.skip();
         },
+        ArrayExpression(path: any) {
+            path.node.elements.forEach((item: t.ObjectExpression) => {
+                if (item.type === 'ObjectExpression') {
+                    processStoreBinding(item);
+                }
+            });
+            path.skip();
+        }
     });
 
     return { resultCode, store_fields: all_store_fields };
 
     // 处理每个 storeBinding 的转换
-    function processStoreBinding(item) {
+    function processStoreBinding(item: t.ObjectExpression) {
         let storeName = '';
         let fields = [];
         let actions = [];
 
-        item.properties.forEach((property) => {
-            if (property.key.name === 'store') {
-                storeName = property.value.object.name; // store 名称
-            } else if (property.key.name === 'fields') {
-                fields = property.value.elements.map((elem) => elem.value); // 获取字段
-            } else if (property.key.name === 'actions') {
-                actions = property.value.elements.map((elem) => elem.value); // 获取 actions
+        item.properties.forEach((property: t.ObjectProperty) => {
+            if (t.isIdentifier(property.key)) {
+                if (property.key.name === 'store') {
+                    // 补充
+                    if (t.isMemberExpression(property.value) && t.isIdentifier(property.value.object)) {
+                        storeName = property.value.object.name; // store 名称
+                    }
+                    else if (t.isIdentifier(property.value)) {
+                        // 如果 store 是 Identifier，如 assistantStore
+                        storeName = property.value.name;  // 获取 store 的标识符
+                    }
+                    else {
+                        // 补充处理其他情况（如可能的其他类型）
+                        throw new Error('Unsupported store value type');
+                    }
+                } else if (property.key.name === 'fields') {
+                    if (t.isArrayExpression(property.value)) {
+                        fields = property.value.elements.map((elem: t.StringLiteral) => elem.value); // 获取字段
+                    }
+                    else if (t.isObjectExpression(property.value)) {
+                        fields = property.value.properties.map((elem: t.ObjectProperty) => { if (t.isStringLiteral(elem.value) && t.isIdentifier(elem.key)) return `${elem.key.name}: ${elem.value.value}` });
+                    }
+                } else if (property.key.name === 'actions') {
+                    if (t.isArrayExpression(property.value)) {
+                        actions = property.value.elements.map((elem: t.StringLiteral) => elem.value); // 获取字段
+                    }
+                    else if (t.isObjectExpression(property.value)) {
+                        actions = property.value.properties.map((elem: t.ObjectProperty) => { if (t.isStringLiteral(elem.value) && t.isIdentifier(elem.key)) return `${elem.key.name}: ${elem.value.value}` });
+                    }
+                }
             }
         });
         all_store_fields.push(...fields)

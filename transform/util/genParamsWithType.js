@@ -15,22 +15,56 @@ export function genParamsWithType(prop) {
         .join(', ');
 }
 
+
 // 生成参数模式（处理解构语法）
 function generateParameterPattern(node) {
     switch (node.type) {
         case 'Identifier':
-            return node.name; // 简单标识符（如 param）
+            return node.name;
         case 'ObjectPattern':
-            // 对象解构（如 { prop1, prop2 }）
-            return `{ ${node.properties.map(p => generateParameterPattern(p.key)).join(', ')} }`;
+            return `{ ${node.properties.map(p => {
+                if (p.shorthand) {
+                    if (p.value?.type === 'AssignmentPattern') {
+                        const left = generateParameterPattern(p.value.left);
+                        const right = generateDefaultValue(p.value.right);
+                        return `${left} = ${right}`;
+                    } else {
+                        return generateParameterPattern(p.key);
+                    }
+                } else {
+                    const key = generateParameterPattern(p.key);
+                    const value = generateParameterPattern(p.value);
+                    return `${key}: ${value}`;
+                }
+            }).join(', ')} }`;
         case 'ArrayPattern':
-            // 数组解构（如 [elem1, elem2]）
             return `[ ${node.elements.map(e => generateParameterPattern(e)).join(', ')} ]`;
+
+        case 'AssignmentPattern': {
+
+            const left = generateParameterPattern(node.left);
+            const right = generateDefaultValue(node.right);
+            return `${left} = ${right}`;
+        }
         default:
             throw new Error(`Unsupported parameter type: ${node.type}`);
     }
 }
 
+function generateDefaultValue(node) {
+    switch (node.type) {
+        case 'ObjectExpression':
+            return '{}';
+        case 'ArrayExpression':
+            return '[]';
+        case 'Literal':
+            return JSON.stringify(node.value);
+        case 'Identifier':
+            return node.name;
+        default:
+            return '...'; // 简化为占位符，实际需根据AST扩展
+    }
+}
 // 类型解析（根据类型注解生成类型文本）
 function getTypeText(typeNode) {
     switch (typeNode.type) {

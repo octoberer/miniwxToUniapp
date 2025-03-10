@@ -163,7 +163,7 @@ export function resolvefunc(propValue: t.Node, stateProperties: statePropertiesT
                 const localVariables = collectLocalVariables(prop, scope)
                 if (t.isObjectMethod(prop)) {
                     // 阶段2: AST转换
-                    // debugger
+                    // 
                     if (t.isIdentifier(prop.key)) {
                         const name = prop.key.name;
                         if (keyName == 'methods') {
@@ -185,7 +185,7 @@ export function resolvefunc(propValue: t.Node, stateProperties: statePropertiesT
 
             }
             else if (t.isObjectProperty(prop)) {
-                // debugger
+                // 
                 if (t.isStringLiteral(prop.key) && t.isFunctionExpression(prop.value)) {
                     // 如果对象属性是字符串字面量，则根据实际需求进行处理
                     const key = prop.key.value;
@@ -252,7 +252,7 @@ function replaceThisAccess(body: t.BlockStatement, stateProperties: any[], scope
                 t.isIdentifier(path.node.property, { name: "data" }) &&
                 t.isMemberExpression(path.parentPath.node)
             ) {
-                // debugger
+                // 
                 // 获取 this.data.xxx 中的 xxx 属性名（例如 list）
                 const targetProp = path.parentPath.node.property.name;
                 const correspondingState = stateProperties.find(state => state.name === targetProp);
@@ -301,12 +301,12 @@ function replaceThisAccess(body: t.BlockStatement, stateProperties: any[], scope
                 t.isIdentifier(path.node.property) &&
                 all_methods_name.includes(path.node.property.name)
             ) {
-                // debugger
+                // 
                 path.replaceWith(t.identifier(property.name));
             }
         },
         VariableDeclarator(path) {
-            // debugger
+            // 
             const isDataName = stateProperties.find(state => state.name === path.node.id.name)
             if (t.isIdentifier(path.node.id) &&
                 isDataName &&
@@ -321,7 +321,7 @@ function replaceThisAccess(body: t.BlockStatement, stateProperties: any[], scope
         // 新增对函数参数的处理
         // 处理函数参数（支持解构）
         Function(path) {
-            debugger
+
             const processIdentifier = (paramPath) => {
                 if (paramPath.isIdentifier()) {
                     const paramName = paramPath.node.name;
@@ -433,7 +433,7 @@ function replaceSetData(body: t.BlockStatement, stateProperties: any[], localVar
         // 处理 this.setData 的调用
         CallExpression(path) {
             // 处理 this.setData 调用
-            // debugger
+            // 
             if (t.isMemberExpression(path.node.callee) &&
                 t.isThisExpression(path.node.callee.object) &&
                 t.isIdentifier(path.node.callee.property, { name: "setData" })) {
@@ -457,7 +457,7 @@ function handleSetDataCall(path, stateProperties: statePropertiesType[], localVa
     const updates = path.node.arguments[0];
     if (!t.isObjectExpression(updates)) return;
     const statements = [] as t.Statement[];
-    // debugger
+    // 
     covertSetData(updates, statements, { stateProperties, localVariables })
     path.replaceWithMultiple(statements as never[]);
 }

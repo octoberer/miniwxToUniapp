@@ -75,7 +75,7 @@ export function extractParts(code) {
                     } else if (prop.key.name === 'properties') {
                         extractedParts.properties = generate(prop.value).code;
                     } else if (prop.key.name === 'observers') {
-                        // debugger
+                        // 
                         extractedParts.observers = extractMethods(prop.value);
                     } else if (prop.key.name === 'methods') {
                         extractedParts.methods = extractMethods(prop.value);
@@ -89,7 +89,6 @@ export function extractParts(code) {
             }
         }
     });
-    console.log('extractedParts', extractedParts);
     return extractedParts;
 }
 
