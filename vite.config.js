@@ -13,6 +13,7 @@
 // })
 
 import { defineConfig } from 'vite';
+import terser from '@rollup/plugin-terser';
 
 export default defineConfig({
     build: {
@@ -28,6 +29,13 @@ export default defineConfig({
                     vue: 'Vue', // 如果你的库依赖 Vue，可以在这里指定全局变量
                 },
             },
+            plugins: process.env.NODE_ENV === 'production' ? [
+                terser({
+                    compress: {
+                        drop_console: true,
+                    },
+                }),
+            ] : [],
         },
     },
 });

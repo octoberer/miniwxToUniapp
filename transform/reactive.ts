@@ -1,9 +1,10 @@
 import { parse } from "@babel/parser";
-import traverse from "@babel/traverse";
+import traverse, { NodePath } from "@babel/traverse";
 import generate from "@babel/generator";
 import * as t from "@babel/types";
 import { wxlifecycle } from "./lifetime";
 import { functionStrType, replace_pending_arr, resolvefunc, transformFunction2 } from "./util/resolvefunction";
+import { getpropDataName } from "./util/raplace";
 
 let scope = null
 export interface statePropertiesType { name: string, type: "ref" | 'reactive', var_type: string, value?: string, is_property?: boolean, is_store?: boolean, is_emit?: boolean }
@@ -87,7 +88,12 @@ function resolveData(propValue: t.ObjectExpression) {
                 value: generate(actualValue).code
             });
         } else {
-            console.warn(`Unhandled type for property "${name}":`, actualValue.type);
+            arr.push({
+                name,
+                type: "ref",
+                var_type,
+                value: generate(actualValue).code
+            });
         }
     });
     return arr;
@@ -107,15 +113,14 @@ export function parseWechatData(code: string, store_fields: string[]) {
     const computed = [] as functionStrType[];
     const watchers = [] as functionStrType[];
     traverse(ast, {
-        ObjectExpression(path) {
+        ObjectExpression(path: NodePath<any>) {
             scope = path.scope
             if (path.parent.type === "CallExpression") {
                 const name = path.parent.callee.name
                 if (name === "Component" || name === "ComponentWithStore" || name === "Page") {
-                    path.get("properties").forEach((propPath) => {
+                    path.get("properties").forEach((propPath: NodePath<t.ObjectMethod> | NodePath<t.ObjectProperty>) => {
                         const prop = propPath.node
 
-                        const temp = generate(prop).code
                         if (prop.type === 'ObjectProperty') {
                             // 配置项A：B
                             let propName = ''
@@ -125,13 +130,15 @@ export function parseWechatData(code: string, store_fields: string[]) {
                             else if (t.isStringLiteral(prop.key)) {
                                 propName = prop.key.value
                             }
+
                             if (t.isObjectExpression(prop.value)) {
+                                const valuePath = propPath.get("value");
                                 // 类似data:{}里的{}
-                                const propValue = prop.value;
+                                const currentNode = prop.value;
                                 if (propName === "properties") {
                                     // 处理 props 定义
-                                    if (t.isObjectExpression(propValue)) {
-                                        propValue.properties.forEach(p => {
+                                    if (t.isObjectExpression(currentNode)) {
+                                        currentNode.properties.forEach(p => {
                                             if (t.isObjectProperty(p)) {
                                                 if (t.isIdentifier(p.key) && (t.isObjectExpression(p.value))) {
                                                     const name = p.key.name;
@@ -178,70 +185,51 @@ export function parseWechatData(code: string, store_fields: string[]) {
                                     }
                                 } else if (propName === "data") {
                                     // 处理 data 定义
-                                    if (t.isObjectExpression(propValue)) {
-                                        stateProperties.push(...resolveData(propValue))
+                                    if (t.isObjectExpression(currentNode)) {
+                                        stateProperties.push(...resolveData(currentNode))
                                     }
                                 }
                                 else if (propName === "methods") {
                                     // 处理剩余代码的data替换
-                                    resolvefunc({ propValue: propValue, propPath }, stateProperties, scope, methods, 'methods')
+                                    resolvefunc(valuePath, stateProperties, methods, 'methods')
                                 }
                                 else if (propName === 'lifetimes' || propName === 'pageLifetimes') {
                                     //处理 lifetimes 或 pageLifetimes，放到 lifecycle 数组
-                                    resolvefunc({ propValue: propValue, propPath }, stateProperties, scope, lifecycle)
+                                    resolvefunc(valuePath, stateProperties, lifecycle)
 
                                 } else if (propName === 'computed') {
 
                                     // 补充，处理 computed（计算属性）
-                                    resolvefunc({ propValue: propValue, propPath }, stateProperties, scope, computed, 'computed')
+                                    resolvefunc(valuePath, stateProperties, computed, 'computed')
 
                                 } else if (propName === 'watch' || propName === 'observers') {
 
                                     // 补充，处理 watch 或 observers
-                                    resolvefunc({ propValue: propValue, propPath }, stateProperties, scope, watchers, 'watch')
+                                    resolvefunc(valuePath, stateProperties, watchers, 'watch')
                                 }
                             }
                             else if (t.isFunctionExpression(prop.value)) {
                                 // 普通方法a:function(){}中的function(){}
-                                resolvefunc({ propValue: prop, propPath }, stateProperties, scope, methods, 'methods')
+                                const funcPath = propPath.get("value");
+                                resolvefunc(funcPath, stateProperties, methods, 'methods')
                             }
                         }
                         else if (prop.type === 'ObjectMethod') {
-                            let propName = prop.key.name
+                            const propName = prop.key.name
                             if (wxlifecycle.includes(propName)) {
-                                debugger
                                 // 补充，处理生命周期函数，放到 lifecycle 数组
-                                resolvefunc({ propValue: prop, propPath }, stateProperties, scope, lifecycle)
+                                resolvefunc(propPath, stateProperties, lifecycle)
                             }
                             else {
                                 // 除了生命周期的普通函数
-                                resolvefunc({ propValue: prop, propPath }, stateProperties, scope, methods, 'methods')
+                                resolvefunc(propPath, stateProperties, methods, 'methods')
                             }
                         }
                     });
                 }
             }
 
-        },
-        // 匹配函数声明
-        FunctionDeclaration(path) {
-            // 获取带有 export 的函数代码
-            function getExportedCode(path) {
-                let functionCode = path.toString();
-                // 检查函数是否有 export
-                const isExported = path.findParent((p) => p.isExportDeclaration());
-                if (isExported) {
-                    functionCode = `export ${functionCode}`;
-                }
-                return functionCode;
-            }
-            // 判断该函数是否在组件或页面定义外
-            if (!isInsideComponentOrPage(path)) {
-                const functionCode = getExportedCode(path);
-                extractedFunctions.push(functionCode);
-            }
-
-        },
+        }
 
     });
 
@@ -249,38 +237,89 @@ export function parseWechatData(code: string, store_fields: string[]) {
         transformFunction2(replace_pending_task, stateProperties, scope)
     }
 
-    const dataDeclarations = stateProperties.filter(data => !data.is_property && !data.is_store && !data.is_emit)
-        .map(data => {
-            if (data.type === "ref") {
-                const type_string = data.var_type == 'unknown' || '' ? '' : data.var_type == 'array' ? '<any[]>' : `<${data.var_type}>`
-                const default_value = `${data.value === "" ? '""' : data.value ? data.value : data.var_type == 'string' ? '""' : data.var_type == 'number' ? '0' : data.var_type == 'array' ? '[]' : null}`
-                return `const ${data.name} = ref${type_string}(${default_value});`;
-            } else {
-                return `const ${data.name} = reactive(${data.value ? data.value : '{}'});`;
-            }
-        })
+    function getDefaultValue(var_type: string, value: string | undefined): string {
+        if (value !== undefined && value !== "") {
+            return value;
+        }
+
+        switch (var_type) {
+            case "string":
+                return '""';
+            case "number":
+                return "0";
+            case "array":
+                return "[]";
+            case "boolean":
+                return "false";
+            case "object":
+                return "{}";
+            case "null":
+                return "null";
+            case "function":
+                return "() => {}";
+            default:
+                return "null";
+        }
+    }
+
+    function getTypeString(var_type: string): string {
+        if (var_type === "unknown" || var_type === "") {
+            return "";
+        }
+        return var_type === "array" ? "<any[]>" : `<${var_type}>`;
+    }
+
+    function generateDeclaration(data: statePropertiesType): string {
+        if (data.type === "ref") {
+            const typeString = getTypeString(data.var_type);
+            const defaultValue = getDefaultValue(data.var_type, data.value);
+            return `const ${data.name} = ref${typeString}(${defaultValue});`;
+        } else {
+            const defaultValue = data.value ? data.value : "{}";
+            return `const ${data.name} = reactive(${defaultValue});`;
+        }
+    }
+    debugger
+    const dataDeclarations = stateProperties
+        .filter(data => !data.is_property && !data.is_store && !data.is_emit)
+
+    const dataDeclarations_str = dataDeclarations.map(generateDeclaration)
         .join("\n");
-    const propertiesDeclarations = stateProperties.filter(prop => prop.is_property)
+
+    const propertiesDeclarations = stateProperties.filter(prop => prop.is_property);
+
+    const propertiesDeclarations_str = propertiesDeclarations.length > 0
+        ? `const props = defineProps({\n  ${propertiesDeclarations
+            .map((prop) => {
+                if (prop.value) {
+                    // 如果有默认值，将其包装为函数
+                    return `${prop.name}: {
+                    type: ${prop.var_type},
+                    default: () => ${prop.value}
+                  }`;
+                } else {
+                    return `${prop.name}: ${prop.var_type}`;
+                }
+            })
+            .join(",\n  ")}\n});`
+        : '';
+    const propertyAndData = propertiesDeclarations.filter(item => dataDeclarations.find(inner_item => inner_item.name === getpropDataName(item.name)))
+    propertyAndData.forEach(({ name }) => {
+        const body = `{
+            internal${name.slice(0, 1).toUpperCase() + name.slice(1)}.value = props.${name};
+            }`
+        watchers.push({
+            body,
+            name: "",
+            params: ""
+        })
+    })
     const emit = stateProperties.filter(prop => prop.is_emit)
     const emitDeclarations = emit.length > 0 ? `const emit= defineEmits([${emit.map(prop => '"' + prop.name + '"').join(',')}]);` : ""
-    const propertiesDeclarations_str = propertiesDeclarations.length > 0 ? `const props = defineProps({\n  ${propertiesDeclarations
-        .map((prop) => {
-            if (prop.value) {
-                return `${prop.name}: {
-                    type: ${prop.var_type},
-                    default: ${prop.value}
-                  }`
-            }
-            else {
-                return `${prop.name}: ${prop.var_type}`
-            }
-        })
-        .join(",\n  ")}\n});` : '';
-
     const reactiveData = `
-        ${dataDeclarations}
-        ${propertiesDeclarations_str}
-        ${emitDeclarations}
+${propertiesDeclarations_str}
+${dataDeclarations_str}
+${emitDeclarations}
         `;
     return { reactiveData, lifecycle, storeBindings, computed, watchers, methods, extractedFunctions };
 }

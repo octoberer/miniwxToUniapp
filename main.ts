@@ -143,7 +143,7 @@ async function convertMiniProgram(
                if (otherString && otherString.length > 0) {
 
                     await writeFile(
-                         path.join(destDir, 'src/content_util', `${path.basename(folderPath)}.ts`),
+                         path.join(destDir, 'content_util', `${path.basename(folderPath)}.ts`),
                          otherString,
                          'utf8'
                     );
@@ -153,7 +153,7 @@ async function convertMiniProgram(
                throw new Error(`处理目录 ${folderPath} 失败: ${error.message}`);
           }
      }
-     await mkdir(path.join(destDir, 'src/content_util'), { recursive: true });
+     await mkdir(path.join(destDir, 'content_util'), { recursive: true });
      await processDirectory(srcDir);
 }
 

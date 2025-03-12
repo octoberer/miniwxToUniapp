@@ -12,6 +12,7 @@ export function generateLifecycle(arr) {
         onReachBottom: 'onUpdated',     // onReachBottom -> onUpdated
         onShareAppMessage: 'onMounted', // onShareAppMessage -> onMounted
         show: 'onShow',
+        hide: 'onHide',
         created: 'onCreated',        // created -> onCreated
         attached: 'onMounted',       // attached -> onMounted
         detached: 'onUnmounted',     // detached -> onUnmounted

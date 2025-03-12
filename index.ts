@@ -18,7 +18,7 @@ export function transformWxTsToVue3Setup(inputCode: string) {
   const watchersCode = generateWatchers(watchers);
   const lifecycleHooksCode = generateLifecycle(lifecycle);
   const methodsCode = generateMethods(methods);
-  debugger
+
   const otherString = removeComponentAndImports(inputCode)
   const combinedCode = `
     ${piniaStoreCode}
@@ -29,15 +29,119 @@ export function transformWxTsToVue3Setup(inputCode: string) {
     ${lifecycleHooksCode ? lifecycleHooksCode : ''}
     
   `;
+  debugger
   const outputVueCode = applyFinalReplacements(combinedCode.replace(/wx\./g, "uni."));
   return { outputVueCode, otherString };
 }
-// console.log(transformWxTsToVue3Setup(`
-// // components/common/custom-date-picker/custom-date-picker.ts
-// Page({
-  
-// })
-// `))
+
+console.log(transformWxTsToVue3Setup(`
+import { getFormattedDateAndWeekdays, getFormattedDateAndWeekdaysByCalendar, getRealpx } from "../../../utils/util";
+
+// components/common/custom-date-picker/custom-date-picker.ts
+const dayLength=15
+Component({
+
+  /**
+   * 组件的属性列表
+   */
+  properties: {
+    show: {
+      type: Boolean
+    }
+  },
+
+  /**
+   * 组件的初始数据
+   */
+  data: {
+    upcomingWeekdays: [{ date: '', weekday: '四', fullDate: '2024' }],
+    currentDateIndex: 0,
+    translateXValue: 0,
+    startX: 0,
+    leftLimit: -1*getRealpx(50*dayLength+15*dayLength-342) ,
+    appointmentAMFlag: true,
+  },
+
+  /**
+   * 组件的方法列表
+   */
+  methods: {
+    onClose() {
+      this.setData({
+        show: false
+      })
+    },
+    onPopupEnsure() {
+      const { upcomingWeekdays, currentDateIndex, appointmentAMFlag } = this.data
+      console.log(upcomingWeekdays, currentDateIndex, appointmentAMFlag)
+      this.setData({
+        show: false,
+      })
+      this.triggerEvent('updateDateAndTime', { date: upcomingWeekdays[currentDateIndex].date, appointmentAMFlag, fullDate: upcomingWeekdays[currentDateIndex].fullDate })
+    },
+    changeAppointmentAMFlag(event) {
+      console.log(event)
+      const { flag } = event.target.dataset
+      this.setData({
+        appointmentAMFlag: flag
+      })
+    },
+    updateAppointmentTime(event) {
+      const { index } = event.target.dataset
+      this.setData({
+        currentDateIndex: index
+      })
+    },
+    touchstart(e) {
+      this.data.startX = e.changedTouches[0].pageX
+    },
+    touchmove(e) {
+      let endX = e.changedTouches[0].pageX;
+      let xOffset = endX - this.data.startX;
+      let newTranslateXValue = this.data.translateXValue
+      if (xOffset < 0) {
+        if (this.data.translateXValue + xOffset > this.data.leftLimit) {
+          newTranslateXValue = this.data.translateXValue + xOffset
+        }
+        else {
+          newTranslateXValue = this.data.leftLimit
+        }
+      }
+      else if (xOffset > 0) {
+        // console.log('向右滑动')
+        if (this.data.translateXValue + xOffset < 0)
+          newTranslateXValue = this.data.translateXValue + xOffset
+        else {
+          newTranslateXValue = 0
+        }
+      }
+      this.setData({
+        translateXValue: newTranslateXValue,
+      })
+      this.data.startX = endX
+    },
+    showCalendar(){
+      // this.setData({
+      //   calendarShow:true
+      // })
+      wx.showToast({title:'暂不支持',icon:'none'})
+    },
+    onVanCalendarClose(){
+      this.setData({
+        calendarShow:false
+      })
+    },
+  },
+  lifetimes: {
+    attached() {
+      // 使用函数并打印结果
+      console.log(this.data.leftLimit)
+      const upcomingWeekdays = getFormattedDateAndWeekdaysByCalendar();
+      this.setData({ upcomingWeekdays })
+    },
+  }
+})
+`))
 
 // const a = convertWXMLToVueTemplate(`<view class="flex-row justify-between">
 //   <view class="w-339 round-40 flex-row color-darkText bg-backgroundGray px-15 gap-10 py-12 items-center">

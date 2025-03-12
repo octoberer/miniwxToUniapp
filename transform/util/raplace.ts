@@ -1,14 +1,14 @@
-import traverse from "@babel/traverse";
+import traverse, { NodePath } from "@babel/traverse";
 import { localVariablesType } from "./collectLocalVariables";
 import * as t from "@babel/types";
 import { getType, statePropertiesType } from "../reactive";
 import generate from "@babel/generator";
-export function replaceThisAccess(body: t.BlockStatement, stateProperties: statePropertiesType[], scope: any, all_methods_name: string[]) {
+export function replaceThisAccess(body: t.Node, stateProperties: statePropertiesType[], scope: any, all_methods_name: string[]) {
     // 转换data,properties,store_field
 
     traverse(body, {
         // 处理 this.data.xxx 的访问
-        MemberExpression(path) {
+        MemberExpression(path: NodePath<t.MemberExpression>) {
             const { object, property } = path.node;
             if (
                 t.isThisExpression(path.node.object) &&
@@ -17,6 +17,7 @@ export function replaceThisAccess(body: t.BlockStatement, stateProperties: state
             ) {
                 // 
                 // 获取 this.data.xxx 中的 xxx 属性名（例如 list）
+
                 const targetProp = path.parentPath.node.property.name;
                 const correspondingState = stateProperties.find(state => state.name === targetProp);
 
@@ -38,12 +39,41 @@ export function replaceThisAccess(body: t.BlockStatement, stateProperties: state
                     }
                 }
                 else if (correspondingState && correspondingState.is_property) {
-                    path.parentPath.replaceWith(
-                        t.memberExpression(
-                            t.identifier("props"),
-                            t.identifier(targetProp), // 创建 xxx 标识符
-                        )
-                    );
+
+                    if (t.isAssignmentExpression(path.parentPath.parentPath.node)) {
+                        // 如果是修改prop的操作，那么应该增加一个同名的state，并改成state赋值
+                        const potentialPropName = getpropDataName(targetProp)
+                        const correspondingState_data = stateProperties.find(state => state.name === potentialPropName && !state.is_property);
+                        if (correspondingState.type === "ref") {
+                            // 替换为 ref 的访问方式：xxx.value
+                            path.parentPath.replaceWith(
+                                t.memberExpression(
+                                    t.identifier(potentialPropName), // 创建 xxx 标识符
+                                    t.identifier("value")     // 添加 .value 属性
+                                )
+                            );
+                            if (!correspondingState_data) {
+                                stateProperties.push({ name: potentialPropName, type: "ref", var_type: correspondingState.var_type?.toLowerCase(), value: `props.${targetProp}` })
+                            }
+                        } else {
+                            // 替换整个 this.data.xxx 为 xxx
+                            path.parentPath.replaceWith(
+                                t.identifier(potentialPropName)
+                            );
+                            if (!correspondingState_data) {
+                                stateProperties.push({ name: potentialPropName, type: "reactive", var_type: correspondingState.var_type?.toLowerCase(), value: `props.${targetProp}` })
+                            }
+                        }
+                    }
+                    else {
+                        path.parentPath.replaceWith(
+                            t.memberExpression(
+                                t.identifier("props"),
+                                t.identifier(targetProp), // 创建 xxx 标识符
+                            )
+                        );
+                    }
+
                 }
             }
             // 处理 XXX.store.YYY
@@ -83,7 +113,6 @@ export function replaceThisAccess(body: t.BlockStatement, stateProperties: state
         },
         // 处理函数内部的函数参数的替换（支持解构）
         Function(path) {
-
             const processIdentifier = (paramPath) => {
                 if (paramPath.isIdentifier()) {
                     const paramName = paramPath.node.name;
@@ -137,12 +166,13 @@ export function replaceThisAccess(body: t.BlockStatement, stateProperties: state
 }
 export const transformParamReferences = (
     path: any,
-    varName: string
+    param: { parObjectName: string, name: string, aliasName?: string },
+    keyName?: string
 ) => {
     path.traverse({
         Identifier(childPath) {
             const { node, parent } = childPath;
-            if (node.name !== varName) {
+            if (node.name !== param.name && node.name !== param.aliasName) {
                 return
             }
             // 排除以下情况：
@@ -169,16 +199,32 @@ export const transformParamReferences = (
                     return
                 }
             }
-            // 获取绑定信息
-            const binding = childPath.scope.getBinding(varName);
 
+            let binding = childPath.scope.getBinding(param.name);
+            // 获取绑定信息
+            if (param.aliasName) {
+                binding = childPath.scope.getBinding(param.aliasName);
+            }
             // 核心逻辑：仅处理来自参数的绑定
             if (binding?.kind === 'param') {
                 // 构造 this.data.paramName
-                const memberExpr = t.memberExpression(
+                let memberExpr = t.memberExpression(
                     t.memberExpression(t.thisExpression(), t.identifier('data')),
-                    t.identifier(varName)
+                    t.identifier(param.name)
                 );
+                if (param.parObjectName && keyName === 'watch') {
+                    memberExpr = t.memberExpression(
+                        t.memberExpression(
+                            t.memberExpression(
+                                t.thisExpression(), // this
+                                t.identifier('data') // this.data
+                            ),
+                            t.identifier(param.parObjectName) // this.data.item
+                        ),
+                        t.identifier(param.name) // this.data.item.XX
+                    );
+                }
+
                 const a = generate(memberExpr).code
                 console.log(a)
                 // 替换标识符
@@ -189,7 +235,7 @@ export const transformParamReferences = (
         }
     });
 };
-export function replaceEmitAccess(body: t.BlockStatement, stateProperties: statePropertiesType[], scope: any) {
+export function replaceEmitAccess(body: t.Node, stateProperties: statePropertiesType[], scope: any) {
     // 转换this.triggerEvent
     traverse(body, {
         CallExpression(path) {
@@ -220,13 +266,17 @@ export function replaceEmitAccess(body: t.BlockStatement, stateProperties: state
                 // 替换成 `===`
                 path.node.operator = '===';
             }
+            else if (path.node.operator === '!=') {
+                // 替换成 `===`
+                path.node.operator = '!==';
+            }
         }
     }, scope);
 
     return body;
 }
 // 替换 this.setData 和 this.emit
-export function replaceSetData(body: t.BlockStatement, stateProperties: statePropertiesType[], localVariables: Map<string, localVariablesType>, scope: any) {
+export function replaceSetData(body: t.Node, stateProperties: statePropertiesType[], localVariables: Map<string, localVariablesType>, scope: any) {
     traverse(body, {
         // 处理 this.setData 的调用
         CallExpression(path) {
@@ -361,4 +411,8 @@ function covertSetData(updates: t.ObjectExpression, statements: t.Statement[], {
         }
     });
 
+}
+
+export const getpropDataName = (name: string) => {
+    return `internal${name.slice(0, 1).toUpperCase() + name.slice(1)}`
 }

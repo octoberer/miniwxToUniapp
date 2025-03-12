@@ -189,7 +189,11 @@ function convertMiniProgram(srcDir, destDir, converters) {
                                 return [2 /*return*/];
                             if (!wxmlCount)
                                 return [2 /*return*/];
-                            vueContent = "\n<script lang=\"ts\" setup>\n".concat(tsContent, "\n</script>\n\n<template>\n").concat(wxmlContent, "\n</template>\n\n<style>\n").concat(wxssContent, "\n</style>");
+                            // 生成Vue文件内容
+                            tsContent = tsContent.trim() ? "<script lang=\"ts\" setup>\n".concat(tsContent, "\n</script>\n") : '';
+                            wxmlContent = wxmlContent.trim() ? "<template>\n".concat(wxmlContent, "\n</template>\n") : '';
+                            wxssContent = wxssContent.trim() ? "<style>\n".concat(wxssContent, "\n</style>") : '';
+                            vueContent = "".concat(tsContent).concat(wxmlContent).concat(wxssContent);
                             outputPath = path.join(destDir, relativePath_1);
                             parentDir = path.dirname(outputPath);
                             return [4 /*yield*/, mkdir(parentDir, { recursive: true })];
@@ -201,7 +205,7 @@ function convertMiniProgram(srcDir, destDir, converters) {
                             // console.log(path.join(parentDir, `${convertToVueComponentName(path.basename(folderPath))}.vue`));
                             _f.sent();
                             if (!(otherString && otherString.length > 0)) return [3 /*break*/, 17];
-                            return [4 /*yield*/, writeFile(path.join(destDir, 'src/content_util', "".concat(path.basename(folderPath), ".ts")), otherString, 'utf8')];
+                            return [4 /*yield*/, writeFile(path.join(destDir, 'content_util', "".concat(path.basename(folderPath), ".ts")), otherString, 'utf8')];
                         case 16:
                             _f.sent();
                             _f.label = 17;
@@ -216,7 +220,7 @@ function convertMiniProgram(srcDir, destDir, converters) {
         }
         return __generator(this, function (_a) {
             switch (_a.label) {
-                case 0: return [4 /*yield*/, mkdir(path.join(destDir, 'src/content_util'), { recursive: true })];
+                case 0: return [4 /*yield*/, mkdir(path.join(destDir, 'content_util'), { recursive: true })];
                 case 1:
                     _a.sent();
                     return [4 /*yield*/, processDirectory(srcDir)];

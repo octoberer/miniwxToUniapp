@@ -11,7 +11,7 @@ export interface functionStrType {
     body: string,
 }
 interface replace_pending_type {
-    modifiedBody: t.BlockStatement,
+    modifiedBody: t.Node,
     name: string,
     params: string,
     arr: functionStrType[]
@@ -20,22 +20,22 @@ export const replace_pending_arr = [] as replace_pending_type[]
 const all_methods_name = [] as string[]
 const addThisDataParamsKey = ['watch', 'computed']
 export function resolvefunc(
-    { propValue, propPath }: { propValue: t.ObjectMethod | t.ObjectProperty | t.ObjectExpression, propPath: any },
+    propPath: NodePath<t.ObjectMethod> | NodePath<t.ObjectProperty> | NodePath<t.ObjectExpression>,
     stateProperties: statePropertiesType[],
-    scope,
     arr: functionStrType[],
     keyName?: string
 ) {
-    const processObjectMethod = (prop: t.ObjectMethod, name: string) => {
+    const currentNode = propPath.node
+    const processObjectMethod = (objectMethodPath: NodePath<t.ObjectMethod>, name: string) => {
         const isAddThisDataParamsKey = addThisDataParamsKey.includes(keyName)
         if (isAddThisDataParamsKey) {
-            addThisDataParams(propPath)
+            renameAddThisDataToParamsRefer(objectMethodPath, keyName)
         }
         else {
-            processParams(propPath);
+            renameFunctionParamsRefer(objectMethodPath);
         }
-
-        const a = generate(prop).code
+        const prop = objectMethodPath.node
+        const scope = objectMethodPath.scope
         const body = prop.body;
         // 收集该函数的内部变量
         const localVariables = collectLocalVariables(prop, scope, isAddThisDataParamsKey);
@@ -45,18 +45,18 @@ export function resolvefunc(
         replace_pending_arr.push({ modifiedBody, name, params, arr });
     };
 
-    const processObjectProperty = (prop: t.ObjectProperty, name: string) => {
+    const processObjectProperty = (objectPropertyPath: NodePath<t.ObjectProperty>, name: string) => {
         const isAddThisDataParamsKey = addThisDataParamsKey.includes(keyName)
         if (isAddThisDataParamsKey) {
-            addThisDataParams(propPath)
+            renameAddThisDataToParamsRefer(objectPropertyPath, keyName)
         }
         else {
-            processParams(propPath);
+            renameFunctionParamsRefer(objectPropertyPath);
         }
+        const prop = objectPropertyPath.node;
+        const scope = objectPropertyPath.scope
         if (t.isFunctionExpression(prop.value)) {
             const body = prop.value.body; // 获取对象属性值中的函数体
-
-            const a = generate(prop.value).code
             const localVariables = collectLocalVariables(prop.value, scope, isAddThisDataParamsKey);
             const modifiedBody = transformFunction1(body, { stateProperties, localVariables }, scope);
             const params = genParamsWithType(prop.value)
@@ -65,16 +65,18 @@ export function resolvefunc(
     };
 
     // 如果是对象字面量
-    if (t.isObjectExpression(propValue)) {
-        // a={ a:function(){}, "b":function(){},"e,f":function(){}, c(){}, }
+    if (t.isObjectExpression(currentNode)) {
+        // { a:function(){}, "b":function(){},"e,f":function(){}, c(){}, }
         // 配置项里面的函数
-        propValue.properties.forEach(prop => {
+        propPath.get("properties").forEach((func_path: NodePath<t.ObjectMethod> | NodePath<t.ObjectProperty>) => {
+            // prop是每一个函数
+            const prop = func_path.node
             if (t.isObjectMethod(prop)) {
                 // c(){}
                 if (t.isIdentifier(prop.key)) {
                     const name = prop.key.name;
                     if (keyName === 'methods') all_methods_name.push(name);
-                    processObjectMethod(prop, name);
+                    processObjectMethod(func_path, name);
                 }
             } else if (t.isObjectProperty(prop)) {
                 // 键值是方法名，包括多个观察者属性
@@ -90,46 +92,49 @@ export function resolvefunc(
                         name = prop.key.name
                     }
                     if (keyName === 'methods') all_methods_name.push(name);
-                    processObjectProperty(prop, name);
+                    processObjectProperty(func_path, name);
                 }
             }
         });
     }
     // 兼容 page 里的生命周期和普通方法
-    else if (t.isObjectMethod(propValue) && t.isIdentifier(propValue.key)) {
+    else if (t.isObjectMethod(currentNode)) {
         // c(){}
-        const name = propValue.key.name;
-        if (keyName === 'methods') all_methods_name.push(name);
-        processObjectMethod(propValue, name);
+        if (t.isIdentifier(currentNode.key)) {
+            const name = currentNode.key.name;
+            if (keyName === 'methods') all_methods_name.push(name);
+            processObjectMethod(propPath, name);
+        }
     }
-    // 补充兼容一个isObjectProperty，而且键值是一个函数expression
-    else if (t.isObjectProperty(propValue) && t.isFunctionExpression(propValue.value)) {
+    // 补充兼容ObjectProperty，而且键值是一个函数expression
+    else if (t.isObjectProperty(currentNode)) {
         //  "b":function(){},"e,f":function(){},a:function(){}
-        let name = ''
-        if (t.isStringLiteral(propValue.key)) {
-            name = propValue.key.value;
+        if (t.isFunctionExpression(currentNode.value)) {
+            let name = ''
+            if (t.isStringLiteral(currentNode.key)) {
+                name = currentNode.key.value;
+            }
+            else if (t.isIdentifier(currentNode.key)) {
+                name = currentNode.key.name
+            }
+            if (keyName === 'methods') all_methods_name.push(name);
+            processObjectProperty(propPath, name);
         }
-        else if (t.isIdentifier(propValue.key)) {
-            name = propValue.key.name
-        }
-        if (keyName === 'methods') all_methods_name.push(name);
-        processObjectProperty(propValue, name);
     }
 }
-function addThisDataParams(propPath: any) {
-
+function renameAddThisDataToParamsRefer(propPath: NodePath<t.ObjectMethod | t.ObjectProperty>, keyName: string) {
     let temp_propPath = propPath
-    const core = (func_propPath: NodePath<t.ObjectMethod | t.FunctionExpression>) => {
+    const core = (func_propPath: NodePath<t.ObjectMethod | t.FunctionExpression>, raw_params_arr: string[]) => {
         const paramNames = func_propPath.node.params
-            .flatMap((param: t.Node) => {
+            .flatMap((param: t.Node, index: number) => {
                 if (t.isIdentifier(param)) {
                     // 处理普通参数，如 `param1`
-                    return [param.name];
+                    return { name: raw_params_arr[index], aliasName: param.name };
                 } else if (t.isObjectPattern(param)) {
                     // 处理对象解构参数，如 `{ allAssistant, currentworker }`
                     return param.properties.map((prop) => {
                         if (t.isObjectProperty(prop)) {
-                            return (prop.key as t.Identifier).name; // 提取解构对象的属性名
+                            return { parObjectName: raw_params_arr[index], name: (prop.key as t.Identifier).name }; // 提取解构对象的属性名
                         }
                         return null;
                     }).filter((name) => name !== null);
@@ -137,7 +142,7 @@ function addThisDataParams(propPath: any) {
                     // 处理数组解构参数，如 `[param1, param2]`
                     return param.elements.map((el) => {
                         if (t.isIdentifier(el)) {
-                            return el.name;
+                            return { parObjectName: raw_params_arr[index], name: el.name };
                         }
                         return null;
                     }).filter((name) => name !== null);
@@ -145,29 +150,41 @@ function addThisDataParams(propPath: any) {
                 return [];
             });
 
-        paramNames.forEach(paramName => {
-            transformParamReferences(func_propPath.get("body"), paramName)
+        paramNames.forEach((param: { parObjectName: string, name: string }) => {
+            // 比如观察的是item,参数是解构了item的属性，那么parObjectName就为item
+            transformParamReferences(func_propPath.get("body"), param, keyName)
         });
     }
     if (propPath.node.type === 'ObjectProperty') {
-        propPath.get("value").traverse({
-            ObjectMethod(ObjectMethodPath) {
-                core(ObjectMethodPath)
-            },
-            FunctionExpression(funcPath) {
-                core(funcPath)
-            },
-        });
+        const valuePath = propPath.get("value")
+        const code = generate(valuePath.node).code
+        if (valuePath.isObjectMethod()) {
+            const parObjectName = valuePath.node.key.name
+            core(valuePath, [parObjectName])
+        }
+        else if (valuePath.isFunctionExpression()) {
+            let raw_params_arr = []
+            if (t.isIdentifier(valuePath.parent.key)) {
+                raw_params_arr = valuePath.parent.key.name
+            }
+            else if (t.isStringLiteral(valuePath.parent.key)) {
+                const fcunName = valuePath.parent.key.value
+                raw_params_arr = fcunName.split(',').map((item: string) => item.trim())
+            }
+            core(valuePath, raw_params_arr)
+        }
     }
     else {
-        core(temp_propPath)
+        const parObjectName = temp_propPath.node.key.name
+        core(temp_propPath, [parObjectName])
     }
 
 }
-function processParams(propPath: any) {
+function renameFunctionParamsRefer(propPath: NodePath<t.ObjectMethod | t.ObjectProperty>) {
     const renameParam = (paramPath: any) => {
         const handleIdentifier = (path) => {
             const paramName = path.node.name;
+
             // 此时还没有收集所有的数据初始定义，因为还有setData里的，所有这里即使判断是否矛盾，也没有用，因为可能setData里和参数同名，所以所有的参数都更改名字+"_"
             // const isConflict = stateProperties.some(s => s.name === paramName);
             // if (!isConflict) return;
@@ -189,6 +206,7 @@ function processParams(propPath: any) {
             // 更新作用域内的所有引用
             path.scope.rename(paramName, newName.name);
 
+            const a = generate(propPath.node).code;
 
         };
 
@@ -221,30 +239,11 @@ function processParams(propPath: any) {
     let paramsPath = propPath.get("params")
     if (!Array.isArray(paramsPath)) {
         // 如果不是，就是对象表达式，要获取其键值的ObjectMethod或者函数表达式部分
-        propPath.get("value").traverse({
-            ObjectMethod(ObjectMethodPath) {
-                processParams(ObjectMethodPath)
-            },
-            FunctionExpression(funcPath) {
-                processParams(funcPath)
-            },
-        });
+        const valuePath = propPath.get("value")
+        renameFunctionParamsRefer(valuePath)
     }
     else {
         paramsPath.forEach(renameParam);
-    }
-}
-function generateParamString(param: any): string {
-    if (param.type === 'Identifier') {
-        return param.name;
-    } else if (param.type === 'ObjectPattern') {
-        return `{ ${param.properties.map(p => p.key.name).join(', ')} }`;
-    } else if (param.type === 'ArrayPattern') {
-        return `[${param.elements.map(e => e.name).join(', ')}]`;
-    } else if (param.type === 'AssignmentPattern') {
-        return `${param.left.name} = ${param.right.value}`;
-    } else {
-        return JSON.stringify(param);
     }
 }
 function transformFunction1(body, { stateProperties, localVariables }, scope) {
